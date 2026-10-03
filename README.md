@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# English Speaking Studio
 
-## Getting Started
+英语口语转录、搭配纠正、课程词汇整理与 Notion 同步工具。此版本已经从 ChatGPT Sites 运行环境迁移为标准 Next.js 项目，可直接放入 GitHub 并部署到 Vercel。
 
-First, run the development server:
+## 已包含
+
+- 浏览器英语语音转录（Chrome 支持最佳）
+- 不自然、中式或错误搭配的局部纠正
+- 原因说明、可迁移搭配和例句
+- 保留原意的轻量修改版
+- 课堂聊天记录清理与词汇预览
+- 将口语纠正和词汇笔记写入 Notion
+
+## 本地启动
+
+需要 Node.js 20.9 或更高版本，以及 pnpm。
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+cp .env.example .env.local
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+打开 http://localhost:3000。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 连接 Notion
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. 在 Notion 的 My integrations 页面创建一个 internal integration，并复制 token。
+2. 打开目标页面 `English speaking course notes`，通过页面菜单 Connections 把该 integration 加入页面。
+3. 在 `.env.local` 中填写 `NOTION_TOKEN` 和 `NOTION_PAGE_ID`。
 
-## Learn More
+不要提交 `.env.local`。项目的 `.gitignore` 已排除密钥文件，但保留 `.env.example`。
 
-To learn more about Next.js, take a look at the following resources:
+## 推送到 GitHub
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+git add .
+git commit -m "Import English Speaking Studio"
+git push -u origin main
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+如果默认分支不是 `main`，请将最后一个命令中的分支名替换为实际名称。
 
-## Deploy on Vercel
+## 部署到 Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. 在 Vercel 中导入 GitHub 仓库 `english-speaking-studio`。
+2. Framework Preset 选择 Next.js，其他构建设置保留默认值。
+3. 在 Project Settings → Environment Variables 添加 `NOTION_TOKEN` 和 `NOTION_PAGE_ID`。
+4. 点击 Deploy。此后每次推送 GitHub，Vercel 会自动重新部署。
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 数据说明
+
+当前迁移版把正式记录直接保存到 Notion，不再使用原 ChatGPT Site 的专用数据库。纠正历史页面目前仍是占位页面；如果之后需要站内检索和统计，可以接入 Vercel Postgres、Supabase 或 Neon。
