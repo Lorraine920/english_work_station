@@ -5,6 +5,7 @@ import { readNotes, saveNotionPage, savePracticeSnapshot, textBlocks } from "../
 import { GET as connectionStatus, POST as connect } from "../app/api/connections/route.ts";
 import { POST as practice } from "../app/api/daily-practice/route.ts";
 import { POST as course } from "../app/api/course-notes/route.ts";
+import { GET as courseNotes } from "../app/api/course-notes/route.ts";
 import { POST as speech } from "../app/api/speech-review/route.ts";
 
 const nativeFetch = globalThis.fetch;
@@ -145,4 +146,62 @@ test("saving UI credentials validates the page and does not return the tokens", 
   const saved = connections(new Request("http://localhost", { headers: { cookie } }));
   assert.equal(saved.aiKey, "replacement-ai"); assert.equal(saved.notionToken, "replacement-notion");
   assert.ok(!JSON.stringify(await response.json()).includes("replacement"));
+});
+
+test("testing Notion saves the tested connection and immediately allows reading notes", async () => {
+  globalThis.fetch = async (url, options) => {
+    assert.equal(options.headers.authorization, "Bearer latest-notion");
+    assert.ok(url.includes("b".repeat(32)));
+    return url.includes("/pages/")
+      ? json({ properties: { title: { type: "title", title: [{ plain_text: "Latest Notes" }] } } })
+      : json({ results: [paragraph("note", "Read after connecting")], has_more: false });
+  };
+  const response = await connect(request({ action: "test-notion", notionToken: "latest-notion", pageId: "b".repeat(32), aiKey: "unsaved-ai", model: "unsaved-model" }));
+  assert.equal(response.status, 200);
+  const status = await response.json();
+  assert.equal(status.notionConfigured, true);
+  const cookie = response.headers.get("set-cookie");
+  const req = new Request("http://localhost/api/course-notes", { headers: { cookie } });
+  assert.equal(connections(req).aiKey, config.aiKey);
+  assert.equal(connections(req).model, config.model);
+  const notes = await courseNotes(req);
+  assert.equal(notes.status, 200);
+  assert.match((await notes.json()).text, /Read after connecting/);
+});
+
+test("testing AI saves only its key and model despite an incomplete Notion draft", async () => {
+  globalThis.fetch = async (_url, options) => {
+    assert.equal(options.headers.authorization, "Bearer latest-ai");
+    assert.equal(JSON.parse(options.body).model, "gpt-4.1");
+    return json({ choices: [{ message: { content: '{"ok":true}' } }] });
+  };
+  const response = await connect(request({ action: "test-ai", aiKey: "latest-ai", model: "gpt-4.1", pageId: "incomplete", notionToken: "unsaved-notion" }));
+  assert.equal(response.status, 200);
+  const saved = connections(new Request("http://localhost", { headers: { cookie: response.headers.get("set-cookie") } }));
+  assert.equal(saved.aiKey, "latest-ai"); assert.equal(saved.model, "gpt-4.1");
+  assert.equal(saved.notionToken, config.notionToken); assert.equal(saved.pageId, config.pageId);
+});
+
+test("models use the supplied key or saved key, filter incompatible families and never expose credentials", async () => {
+  const keys = [];
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, "https://api.openai.com/v1/models");
+    keys.push(options.headers.authorization);
+    return json({ data: ["gpt-4.1-mini", "gpt-4.1", "gpt-4.1", "o3-mini", "gpt-image-1", "gpt-4o-realtime-preview", "gpt-4o-audio-preview", "gpt-5-pro", "gpt-5-codex", "o3-deep-research", "text-embedding-3-small"].map(id => ({ id })) });
+  };
+  for (const aiKey of ["latest-ai", ""]) {
+    const response = await connect(request({ action: "models", aiKey, pageId: "incomplete" }));
+    assert.equal(response.status, 200); assert.equal(response.headers.get("set-cookie"), null);
+    assert.deepEqual((await response.json()).models, ["gpt-4.1", "gpt-4.1-mini", "o3-mini"]);
+  }
+  assert.deepEqual(keys, ["Bearer latest-ai", `Bearer ${config.aiKey}`]);
+});
+
+test("failed tests never overwrite saved credentials and model errors hide upstream secrets", async () => {
+  globalThis.fetch = async () => new Response("upstream-secret", { status: 401 });
+  for (const action of ["test-notion", "test-ai", "models"]) {
+    const response = await connect(request({ action, notionToken: "bad-notion", aiKey: "bad-ai" }));
+    assert.equal(response.status, 502); assert.equal(response.headers.get("set-cookie"), null);
+    assert.ok(!JSON.stringify(await response.json()).includes("upstream-secret"));
+  }
 });

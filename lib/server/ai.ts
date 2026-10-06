@@ -2,6 +2,25 @@ import type { z } from "zod";
 import type { Connections } from "./connections";
 import { ApiError } from "./http";
 
+export async function listAiModels(config: Connections): Promise<string[]> {
+  if (!config.aiKey) throw new ApiError("请先填写 OpenAI API Key。", 400);
+  let response: Response;
+  try {
+    response = await fetch("https://api.openai.com/v1/models", {
+      headers: { authorization: `Bearer ${config.aiKey}` },
+      cache: "no-store", signal: AbortSignal.timeout(15000),
+    });
+  } catch { throw new ApiError("模型列表请求超时或网络不可用，请重试。", 504); }
+  if (!response.ok) throw new ApiError(response.status === 401 ? "OpenAI API Key 无效，请检查连接设置。" : response.status === 403 ? "此 Key 没有读取模型列表的权限，可手动填写模型名称。" : "无法加载模型列表，请稍后重试或手动填写模型名称。", 502);
+  const data = await response.json() as { data?: { id: string }[] };
+  // This application uses text Chat Completions with JSON output. Exclude
+  // specialized modalities and Responses-only model families.
+  return [...new Set((data.data ?? []).map(item => item.id).filter(id =>
+    /^(gpt-|chatgpt-|o[134](?:-|$))/.test(id) &&
+    !/audio|realtime|transcribe|tts|image|search|instruct|codex|deep-research|computer-use|(?:^|-)pro(?:-|$)/.test(id)
+  ))].sort((a, b) => a.localeCompare(b));
+}
+
 export async function aiJson<T>(config: Connections, schema: z.ZodType<T>, instructions: string, input: unknown): Promise<T> {
   if (!config.aiKey) throw new ApiError("请先在连接设置中填写 OpenAI API Key。", 503);
   let response: Response;
